@@ -1,0 +1,107 @@
+model:
+  pretrained_name: "naver-clova-ix/donut-base"
+  task_start_token: "<s_cord-v2>"
+  task_end_token: "</s_cord-v2>"
+  max_seq_length: 512
+  ignore_pad_token_for_loss: true
+
+data:
+  dataset_name: "naver-clova-ix/cord-v2"
+  train_split: "train"
+  validation_split: "validation"
+  image_column: "image"
+  label_column: "ground_truth"
+  num_workers: 4
+  max_train_samples: null
+  max_eval_samples: null
+
+training:
+  output_dir: "outputs"
+  num_train_epochs: 10
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 4
+  learning_rate: 5.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  logging_steps: 50
+  save_steps: 1000
+  eval_steps: 1000
+  gradient_accumulation_steps: 4
+  fp16: true
+  seed: 42
+  early_stopping_patience: 3
+  generation_max_length: 512
+  generation_num_beams: 4
+model:
+  # Base Donut model to fine-tune
+  pretrained_name: "naver-clova-ix/donut-base"
+
+  # Task-specific special tokens
+  task_start_token: "<s_cord-v2>"
+  task_end_token: "</s_cord-v2>"
+
+  # Maximum number of tokens for target sequences
+  max_target_length: 512
+
+data:
+  # Hugging Face dataset id
+  dataset_name: "naver-clova-ix/cord-v2"
+
+  # Dataset split names
+  train_split: "train"
+  validation_split: "validation"
+  test_split: "test"
+
+  # Optional: name of the field containing structured ground-truth JSON.
+  # If null, it will be auto-detected (first dict-like field that is not 'image').
+  label_field: null
+
+  # Optional limits for quick experiments; set to null to use all samples
+  max_train_samples: null
+  max_eval_samples: null
+
+training:
+  output_dir: "outputs/donut-cord-v2"
+
+  num_train_epochs: 5
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+
+  learning_rate: 3e-5
+  weight_decay: 0.01
+  warmup_steps: 0
+  lr_scheduler_type: "linear"
+
+  # Gradient accumulation for effective larger batch sizes
+  gradient_accumulation_steps: 8
+
+  # Mixed precision
+  fp16: true
+
+  # Logging / evaluation / checkpointing
+  logging_steps: 50
+  save_steps: 500
+  eval_steps: 500
+  evaluation_strategy: "steps"   # "no", "steps", or "epoch"
+  save_total_limit: 2
+
+  # Reproducibility
+  seed: 42
+
+  # Early stopping
+  early_stopping_patience: 3
+
+  # Data loader
+  dataloader_num_workers: 4
+
+  # Generation settings for evaluation
+  generation_max_length: 512
+  predict_with_generate: true
+
+inference:
+  # Directory containing the fine-tuned model (e.g. best checkpoint or final output dir)
+  model_dir: "outputs/donut-cord-v2"
+
+  num_beams: 4
+  max_length: 512
+
