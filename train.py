@@ -23,11 +23,23 @@ LOGGER = logging.getLogger(__name__)
 
 
 def donut_collate_fn(features: list) -> Dict[str, torch.Tensor]:
-    """Batch pixel_values (1,C,H,W) -> (B,C,H,W) and labels -> (B,L)."""
-    return {
-        "pixel_values": torch.cat([f["pixel_values"] for f in features], dim=0),
-        "labels": torch.stack([f["labels"] for f in features]),
-    }
+    """Batch pixel_values into (B, C, H, W) and labels into (B, L)."""
+    pixel_values_list = []
+    labels_list = []
+
+    for f in features:
+        pv = f["pixel_values"]
+        # Ensure a batch dimension is present: (C, H, W) -> (1, C, H, W)
+        if pv.ndim == 3:
+            pv = pv.unsqueeze(0)
+        pixel_values_list.append(pv)
+
+        labels_list.append(f["labels"])
+
+    pixel_values = torch.cat(pixel_values_list, dim=0)
+    labels = torch.stack(labels_list)
+
+    return {"pixel_values": pixel_values, "labels": labels}
 
 
 def load_config(path: str) -> Dict[str, Any]:
