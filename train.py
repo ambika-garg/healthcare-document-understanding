@@ -22,6 +22,14 @@ from metrics import DonutMetrics
 LOGGER = logging.getLogger(__name__)
 
 
+def donut_collate_fn(features: list) -> Dict[str, torch.Tensor]:
+    """Batch pixel_values (1,C,H,W) -> (B,C,H,W) and labels -> (B,L)."""
+    return {
+        "pixel_values": torch.cat([f["pixel_values"] for f in features], dim=0),
+        "labels": torch.stack([f["labels"] for f in features]),
+    }
+
+
 def load_config(path: str) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
@@ -106,22 +114,35 @@ def main() -> None:
     output_dir = train_cfg["output_dir"]
     os.makedirs(output_dir, exist_ok=True)
 
-    # Mixed precision and gradient accumulation are handled by TrainingArguments
+    # Dataset uses with_transform(); column_names stay as image/ground_truth but
+    # each batch is transform output (pixel_values, labels). Disable column removal.
+    log_dir = os.path.join(output_dir, "logs")
+    os.environ["TENSORBOARD_LOGGING_DIR"] = log_dir
+
+    batch_size = int(train_cfg["per_device_train_batch_size"])
+    grad_accum = int(train_cfg.get("gradient_accumulation_steps", 1))
+    num_epochs = float(train_cfg["num_train_epochs"])
+    num_training_steps = int(
+        (len(train_dataset) / (batch_size * grad_accum)) * num_epochs
+    )
+    warmup_ratio = float(train_cfg.get("warmup_ratio", 0.0))
+    warmup_steps = int(num_training_steps * warmup_ratio)
+
     training_args = Seq2SeqTrainingArguments(
         output_dir=output_dir,
-        per_device_train_batch_size=int(train_cfg["per_device_train_batch_size"]),
+        per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=int(train_cfg["per_device_eval_batch_size"]),
         learning_rate=float(train_cfg["learning_rate"]),
         weight_decay=float(train_cfg.get("weight_decay", 0.0)),
-        num_train_epochs=float(train_cfg["num_train_epochs"]),
-        warmup_ratio=float(train_cfg.get("warmup_ratio", 0.0)),
+        num_train_epochs=num_epochs,
+        warmup_steps=warmup_steps,
         logging_steps=int(train_cfg.get("logging_steps", 50)),
         save_steps=int(train_cfg.get("save_steps", 1000)),
         eval_steps=int(train_cfg.get("eval_steps", 1000)),
-        evaluation_strategy="steps",
+        eval_strategy="steps",
         save_strategy="steps",
         save_total_limit=3,
-        gradient_accumulation_steps=int(train_cfg.get("gradient_accumulation_steps", 1)),
+        gradient_accumulation_steps=grad_accum,
         fp16=bool(train_cfg.get("fp16", False)),
         predict_with_generate=True,
         generation_max_length=int(train_cfg.get("generation_max_length", model_cfg["max_seq_length"])),
@@ -129,9 +150,9 @@ def main() -> None:
         load_best_model_at_end=True,
         metric_for_best_model="exact_match",
         greater_is_better=True,
-        logging_dir=os.path.join(output_dir, "logs"),
         report_to=["none"],
         dataloader_num_workers=int(data_cfg.get("num_workers", 4)),
+        remove_unused_columns=False,
     )
 
     metrics = DonutMetrics(processor=processor)
@@ -141,13 +162,13 @@ def main() -> None:
         early_stopping_threshold=0.0,
     )
 
-    # Default data collator works because each transform returns fixed-size tensors
     trainer = Seq2SeqTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        tokenizer=processor.tokenizer,
+        processing_class=processor,
+        data_collator=donut_collate_fn,
         compute_metrics=metrics,
         callbacks=[early_stopping],
     )

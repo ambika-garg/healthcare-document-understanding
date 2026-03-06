@@ -67,10 +67,11 @@ def _build_transform(
             task_end_token=task_end_token,
         )
 
+        # Keep batch dim (1, C, H, W) so model always receives 4D input
         pixel_values = processor(
             image,
             return_tensors="pt",
-        ).pixel_values[0]
+        ).pixel_values
 
         # Tokenize the target sequence
         tokenized = processor.tokenizer(
@@ -81,7 +82,7 @@ def _build_transform(
             truncation=True,
             return_tensors="pt",
         )
-        input_ids = tokenized["input_ids"][0]
+        input_ids = tokenized["input_ids"].squeeze(0)
 
         labels = input_ids.clone()
         if ignore_pad_token_for_loss:
